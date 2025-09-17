@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Resource Admin</title>
+  <style>
+    body{font-family:sans-serif;background:#0b1220;color:#e5e7eb;margin:0}
+    .wrap{max-width:980px;margin:0 auto;padding:24px}
+    h1{font-size:20px;margin:0 0 16px}
+    .card{background:#0f172a;border:1px solid #1f2937;border-radius:16px;padding:16px;margin:16px 0;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+    label{display:block;margin-bottom:6px;opacity:.9}
+    input[type="text"],input[type="password"]{width:100%;padding:10px;border-radius:10px;border:1px solid #374151;background:#111827;color:#e5e7eb}
+    button{background:#22c55e;color:#0b1220;border:0;border-radius:10px;padding:10px 14px;cursor:pointer}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border-bottom:1px solid #1f2937;padding:8px;text-align:right;font-size:14px}
+    .muted{opacity:.8}
+    .row{display:flex;gap:12px;align-items:center}
+    .row>*{flex:1}
+    .danger{background:#ef4444;color:#fff}
+    .secondary{background:#111827;color:#e5e7eb;border:1px solid #374151}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}}
+    .chip{display:inline-block;padding:4px 8px;border-radius:999px;background:#111827;border:1px solid #374151;margin-left:6px;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>مدیریت منابع چت‌باکس</h1>
+    <div class="card" id="authCard">
+      <label>توکن ادمین</label>
+      <div class="row">
+        <input id="token" type="password" placeholder="ADMIN_TOKEN...">
+        <button id="saveToken">ورود</button>
+      </div>
+      <div id="authMsg" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div id="app" style="display:none">
+      <div class="grid">
+        <div class="card">
+          <h2>آپلود فایل</h2>
+          <div class="muted">فایل‌های PDF یا متنی (txt/md/html)</div>
+          <input id="files" type="file" multiple>
+          <div style="margin-top:10px">
+            <button id="uploadBtn">آپلود و ایندکس</button>
+          </div>
+          <div id="uploadMsg" class="muted" style="margin-top:8px"></div>
+        </div>
+        <div class="card">
+          <h2>افزودن لینک</h2>
+          <label>URL</label>
+          <input id="urlInput" type="text" placeholder="https://...">
+          <div style="margin-top:10px">
+            <button id="addUrlBtn">افزودن و ایندکس</button>
+          </div>
+          <div id="urlMsg" class="muted" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <h2>فهرست منابع</h2>
+          <div>
+            <button id="refreshBtn" class="secondary">بارگذاری فهرست</button>
+            <button id="rebuildBtn" class="danger">بازسازی کامل ایندکس</button>
+          </div>
+        </div>
+        <div id="meta" class="muted"></div>
+        <table id="tbl">
+          <thead>
+            <tr>
+              <th>منبع</th>
+              <th>نوع</th>
+              <th>تعداد چانک</th>
+              <th>عملیات</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $authCard = document.getElementById('authCard');
+    const $app = document.getElementById('app');
+    const $token = document.getElementById('token');
+    const $saveToken = document.getElementById('saveToken');
+    const $authMsg = document.getElementById('authMsg');
+
+    function getToken(){ return localStorage.getItem('ADMIN_TOKEN') || ''; }
+    function setToken(t){ localStorage.setItem('ADMIN_TOKEN', t); }
+
+    function showApp(){
+      $authCard.style.display='none';
+      $app.style.display='block';
+      load();
+    }
+    function showAuth(){
+      $authCard.style.display='block';
+      $app.style.display='none';
+    }
+
+    $saveToken.onclick = () => {
+      const t = $token.value.trim();
+      if(!t){ $authMsg.textContent='توکن را وارد کنید.'; return; }
+      setToken(t);
+      $authMsg.textContent='ذخیره شد.';
+      showApp();
+    };
+
+    if(getToken()){ showApp(); } else { showAuth(); }
+
+    async function api(path, opts={}){
+      opts.headers = opts.headers || {};
+      opts.headers['Authorization'] = 'Bearer ' + getToken();
+      return fetch(path, opts);
+    }
+
+    // Upload
+    const $files = document.getElementById('files');
+    const $uploadBtn = document.getElementById('uploadBtn');
+    const $uploadMsg = document.getElementById('uploadMsg');
+    $uploadBtn.onclick = async () => {
+      if(!$files.files.length){ $uploadMsg.textContent='فایلی انتخاب نشده.'; return; }
+      const fd = new FormData();
+      for(const f of $files.files) fd.append('files', f);
+      $uploadBtn.disabled = true;
+      $uploadBtn.textContent = 'در حال آپلود...';
+      const res = await api('/api/admin/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      $uploadBtn.disabled = false;
+      $uploadBtn.textContent = 'آپلود و ایندکس';
+      $uploadMsg.textContent = data.error ? ('خطا: ' + data.error) : ('موفق: ' + data.indexed + ' چانک افزوده شد');
+      load();
+    };
+
+    // Add URL
+    const $urlInput = document.getElementById('urlInput');
+    const $addUrlBtn = document.getElementById('addUrlBtn');
+    const $urlMsg = document.getElementById('urlMsg');
+    $addUrlBtn.onclick = async () => {
+      const url = $urlInput.value.trim();
+      if(!url){ $urlMsg.textContent='URL را وارد کنید.'; return; }
+      $addUrlBtn.disabled = true;
+      $addUrlBtn.textContent = 'در حال ایندکس...';
+      const res = await api('/api/admin/add-url', { method:'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ url }) });
+      const data = await res.json();
+      $addUrlBtn.disabled = false;
+      $addUrlBtn.textContent = 'افزودن و ایندکس';
+      $urlMsg.textContent = data.error ? ('خطا: ' + data.error) : ('موفق: ' + data.indexed + ' چانک از این لینک افزوده شد');
+      load();
+    };
+
+    // Table
+    const $tblBody = document.querySelector('#tbl tbody');
+    const $meta = document.getElementById('meta');
+    const $refreshBtn = document.getElementById('refreshBtn');
+    const $rebuildBtn = document.getElementById('rebuildBtn');
+
+    async function load(){
+      const r = await api('/api/admin/items');
+      const data = await r.json();
+      if(data.error){ $meta.textContent = 'خطا: ' + data.error; return; }
+      $meta.textContent = `تعداد کل چانک‌ها: ${data.total}  —  منابع یکتا: ${data.groups.length}`;
+      $tblBody.innerHTML = '';
+      for(const g of data.groups){
+        const tr = document.createElement('tr');
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'حذف این منبع';
+        delBtn.className = 'danger';
+        delBtn.onclick = async () => {
+          if(!confirm('همه چانک‌های این منبع حذف شوند؟')) return;
+          const res = await api('/api/admin/source?source=' + encodeURIComponent(g.source), { method: 'DELETE' });
+          const d = await res.json();
+          load();
+          alert(d.error ? ('خطا: ' + d.error) : 'حذف شد.');
+        };
+
+        tr.innerHTML = `<td>${g.source}</td>
+                        <td><span class="chip">${g.type}</span></td>
+                        <td>${g.count}</td>`;
+        const tdOp = document.createElement('td');
+        tdOp.appendChild(delBtn);
+        tr.appendChild(tdOp);
+        $tblBody.appendChild(tr);
+      }
+    }
+
+    $refreshBtn.onclick = load;
+    $rebuildBtn.onclick = async () => {
+      if(!confirm('بازسازی کامل ایندکس انجام شود؟ ممکن است چند دقیقه طول بکشد.')) return;
+      const res = await api('/api/admin/rebuild', { method: 'POST' });
+      const d = await res.json();
+      alert(d.error ? ('خطا: ' + d.error) : ('ایندکس بازسازی شد: ' + d.items + ' چانک'));
+      load();
+    };
+  </script>
+</body>
+</html>
