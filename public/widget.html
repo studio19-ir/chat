@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Smart Chatbox</title>
+  <style>
+    body { font-family: sans-serif; background:#f7f7f8; margin:0; }
+    .wrap { max-width: 420px; margin: 0 auto; padding: 16px; }
+    .card { background:#fff; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.06); overflow:hidden; }
+    .head { padding: 12px 16px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:10px; }
+    .dot { width:10px; height:10px; border-radius:50%; background:#22c55e; }
+    .title { font-weight:700; }
+    .messages { padding: 12px 16px; height: 440px; overflow-y: auto; display:flex; flex-direction: column; gap: 10px; }
+    .msg { padding:10px 12px; border-radius: 12px; line-height: 1.6; font-size: 14px; white-space: pre-wrap; }
+    .user { background:#e5f2ff; align-self: flex-end; }
+    .bot { background:#f2f5f8; }
+    .foot { display:flex; gap:8px; padding:12px; border-top:1px solid #eee; }
+    .foot input { flex:1; padding:10px 12px; border-radius:12px; border:1px solid #ddd; }
+    .foot button { padding:10px 14px; border:0; background:#111827; color:#fff; border-radius:12px; cursor:pointer; }
+    .src { font-size: 12px; opacity:.8; margin-top:6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="head">
+        <div class="dot"></div>
+        <div class="title">Smart Chatbox</div>
+      </div>
+      <div id="messages" class="messages"></div>
+      <div class="foot">
+        <input id="input" placeholder="سؤال خود را بنویسید..."/>
+        <button id="send">ارسال</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const $msgs = document.getElementById('messages');
+    const $input = document.getElementById('input');
+    const $send = document.getElementById('send');
+
+    function addMsg(text, who='bot', sources=[]) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + who;
+      div.textContent = text;
+      if (sources.length) {
+        const s = document.createElement('div');
+        s.className = 'src';
+        s.textContent = 'منابع: ' + sources.map(x => `[${x.id}] ${x.source} (${x.score})`).join(' | ');
+        div.appendChild(s);
+      }
+      $msgs.appendChild(div);
+      $msgs.scrollTop = $msgs.scrollHeight;
+    }
+
+    addMsg('سلام! من فقط از منابعی که به من داده‌اید پاسخ می‌دهم. اگر چیزی در منابع نباشد، پاسخ نمی‌دهم.');
+
+    async function send() {
+      const text = $input.value.trim();
+      if (!text) return;
+      addMsg(text, 'user');
+      $input.value='';
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+        });
+        const data = await res.json();
+        if (data.error) {
+          addMsg('خطا: ' + data.error);
+          return;
+        }
+        addMsg(data.answer, 'bot', data.sources || []);
+      } catch (e) {
+        addMsg('اشکال در اتصال به سرور.');
+      }
+    }
+
+    $send.addEventListener('click', send);
+    $input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') send();
+    });
+  </script>
+</body>
+</html>
